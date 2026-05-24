@@ -88,5 +88,5 @@ python analysis.py
 ```
 
 ## Author
-**Johnny Nguyen** — Data Science & Computer Science @ UCF  
+**Johnny Nguyen** — Data Science @ UCF  
 [LinkedIn](https://linkedin.com/in/johnnynguyen04)
