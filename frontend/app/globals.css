@@ -1,0 +1,417 @@
+@import "tailwindcss";
+
+/* ============================================================
+   DESIGN TOKENS
+============================================================ */
+:root {
+  --bg-base:      #0B1027;
+  --bg-surface:   #151B3A;
+  --bg-elevated:  #1E2547;
+  --bg-card:      rgba(21, 27, 58, 0.88);
+
+  --gold:         #D4A857;
+  --gold-bright:  #E5B967;
+  --gold-dim:     rgba(212, 168, 87, 0.12);
+  --gold-glow:    rgba(212, 168, 87, 0.22);
+
+  --text-primary:   #F4F0E6;
+  --text-secondary: #A8B2D1;
+  --text-muted:     #6B7A9F;
+
+  --border:        rgba(164, 182, 215, 0.12);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-hover:  rgba(212, 168, 87, 0.35);
+
+  --park-hs: #C8922A;
+  --park-mk: #4A7FC1;
+  --park-ak: #5A9E6F;
+  --park-ep: #8B6BB5;
+
+  --bar-track: rgba(255, 255, 255, 0.06);
+
+  --radius-card: 18px;
+  --shadow-card:  0 24px 60px -16px rgba(11, 16, 39, 0.75), 0 8px 20px -8px rgba(21, 27, 58, 0.4);
+  --shadow-glow:  0 0 40px -8px rgba(212, 168, 87, 0.18);
+}
+
+/* ============================================================
+   BASE
+============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   TYPOGRAPHY UTILITIES
+============================================================ */
+.font-display {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+}
+.font-serif-italic {
+  font-family: var(--font-serif-italic), Georgia, serif;
+  font-style: italic;
+}
+.font-mono {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Prevent orphan words on headings (redesign-skill: Typography) */
+h1, h2, h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+/* Section-level ambient depth — keeps non-hero sections from
+   feeling like flat text blocks on black. Applied via a section
+   class used below. */
+.section-ambient {
+  position: relative;
+}
+.section-ambient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 60% 40% at 18% 20%, rgba(74,127,193,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 45% 35% at 82% 78%, rgba(200,146,42,0.035) 0%, transparent 65%);
+}
+
+/* ============================================================
+   SCROLLBAR
+============================================================ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: rgba(212,168,87,0.22); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(212,168,87,0.45); }
+
+/* ============================================================
+   KEYFRAMES
+============================================================ */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-16px); }
+}
+
+@keyframes float-sm {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-6px) rotate(2.5deg); }
+  66%       { transform: translateY(-3px) rotate(-1.5deg); }
+}
+
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.12; transform: scale(0.65); }
+  50%       { opacity: 1;    transform: scale(1.35); }
+}
+
+@keyframes drift-up {
+  0%   { transform: translateY(100vh) translateX(0px);   opacity: 0; }
+  8%   { opacity: 0.75; }
+  50%  { transform: translateY(40vh) translateX(18px);   opacity: 0.55; }
+  92%  { opacity: 0.4; }
+  100% { transform: translateY(-80px) translateX(30px);  opacity: 0; }
+}
+
+@keyframes castle-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 16px rgba(200,146,42,0.28))
+            drop-shadow(0 0 55px rgba(74,127,193,0.12));
+  }
+  50% {
+    filter: drop-shadow(0 0 32px rgba(200,146,42,0.5))
+            drop-shadow(0 0 90px rgba(74,127,193,0.22));
+  }
+}
+
+@keyframes shimmer-sweep {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes pulse-orb {
+  0%, 100% { opacity: 0.3;  transform: scale(1); }
+  50%       { opacity: 0.65; transform: scale(1.1); }
+}
+
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes draw-line {
+  from { stroke-dashoffset: 1000; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes flag-wave {
+  0%, 100% { transform: skewX(-2deg) scaleX(1); }
+  35%       { transform: skewX(5deg) scaleX(1.08); }
+  70%       { transform: skewX(-1deg) scaleX(0.96); }
+}
+
+@keyframes beam-pulse {
+  0%, 100% { opacity: 0.04; }
+  50%       { opacity: 0.16; }
+}
+
+@keyframes moon-breathe {
+  0%, 100% { opacity: 0.65; }
+  50%       { opacity: 1; }
+}
+
+/* ============================================================
+   UTILITY CLASSES
+============================================================ */
+
+/* Double-bezel card — outer shell + inner core for machined depth */
+.glass-card {
+  background: rgba(7, 18, 38, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-card);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(2, 11, 24, 0.3),
+    var(--shadow-card);
+  position: relative;
+}
+.glass-card::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: calc(var(--radius-card) - 5px);
+  background: var(--bg-card);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  z-index: 0;
+  pointer-events: none;
+}
+.glass-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.glass-card-hover {
+  transition: border-color 0.3s cubic-bezier(0.32,0.72,0,1), box-shadow 0.3s cubic-bezier(0.32,0.72,0,1);
+}
+.glass-card-hover:hover {
+  border-color: var(--border-hover);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    var(--shadow-card),
+    var(--shadow-glow);
+}
+
+/* Star particle */
+.star-particle {
+  animation: star-twinkle var(--dur, 3s) ease-in-out var(--del, 0s) infinite;
+}
+
+/* Float elements */
+.float-anim { animation: float 5.5s ease-in-out infinite; }
+.float-sm   { animation: float-sm 4s ease-in-out infinite; }
+
+/* Breathing pulse for status indicators — Stitch spec: scale 1 → 1.4,
+   opacity 1 → 0.4 at peak, 3s ease-in-out. */
+@keyframes breathe {
+  0%, 100% { transform: scale(1);   opacity: 1;   }
+  50%       { transform: scale(1.4); opacity: 0.4; }
+}
+.breathe { animation: breathe 3s ease-in-out infinite; }
+
+/* Intelligence Pulse — soft gold opacity loop on winning metric */
+@keyframes intelligence-pulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 0 rgba(212,168,87,0); }
+  50%       { opacity: 0.82; text-shadow: 0 0 24px rgba(212,168,87,0.35); }
+}
+.intelligence-pulse { animation: intelligence-pulse 4s ease-in-out infinite; }
+
+/* Table-row calm hover — Stitch spec: 160ms bg fade, no transform */
+.ride-row {
+  transition: background-color 160ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.ride-row:hover {
+  background-color: #1E2547;
+}
+
+/* Airy glass — more see-through than .glass-card, lets nebula read through */
+.glass-card-airy {
+  background: rgba(9, 24, 52, 0.32);
+  border: 1px solid rgba(164, 182, 215, 0.14);
+  border-radius: var(--radius-card);
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 24px 60px -20px rgba(2, 11, 24, 0.55);
+  position: relative;
+  transition: border-color 0.3s cubic-bezier(0.32,0.72,0,1), box-shadow 0.3s cubic-bezier(0.32,0.72,0,1);
+}
+.glass-card-airy:hover {
+  border-color: rgba(200, 146, 42, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 24px 60px -20px rgba(2, 11, 24, 0.55),
+    0 0 40px -10px rgba(200, 146, 42, 0.18);
+}
+
+/* Tabular numbers for data */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Hide scrollbar but keep scroll functionality */
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   THEMED FORM ELEMENTS
+============================================================ */
+.themed-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: rgba(7, 18, 42, 0.9);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237D93B2' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding: 13px 44px 13px 16px;
+  border: 1px solid rgba(200, 146, 42, 0.16);
+  border-radius: 10px;
+  color: #EDE9E3;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  width: 100%;
+}
+.themed-select:focus {
+  outline: none;
+  border-color: rgba(200, 146, 42, 0.5);
+  box-shadow: 0 0 0 3px rgba(200, 146, 42, 0.09);
+}
+.themed-select option {
+  background-color: #0C1F3D;
+  color: #EDE9E3;
+}
+
+/* ============================================================
+   HEATMAP CELLS
+============================================================ */
+.heat-cell {
+  border-radius: 5px;
+  cursor: default;
+  transition: transform 0.14s ease, filter 0.14s ease;
+  position: relative;
+}
+.heat-cell:hover {
+  transform: scale(1.1);
+  filter: brightness(1.3);
+  z-index: 10;
+}
+
+/* ============================================================
+   NOISE / GRAIN OVERLAY (fixed — no scroll GPU repaint)
+============================================================ */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 998;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ============================================================
+   AMBIENT BACKGROUND (fixed — zero scroll cost)
+============================================================ */
+.ambient-bg-dark {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(74,127,193,0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(212,168,87,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 60% at 10% 90%, rgba(74,127,193,0.04) 0%, transparent 60%);
+}
+
+/* ============================================================
+   NEBULA BACKDROP — real photo, tight corner placement, very subtle.
+   Orion Nebula masked to just the upper-right quadrant,
+   heavy fade, low opacity. Reads as distant atmosphere,
+   doesn't try to fill the hero.
+============================================================ */
+.nebula {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.nebula::before {
+  content: "";
+  position: absolute;
+  top: -5%;
+  right: -5%;
+  width: 65vw;
+  height: 75vh;
+  max-width: 1100px;
+  max-height: 900px;
+  background-image: url("/nebula.jpg");
+  background-size: cover;
+  background-position: 50% 40%;
+  background-repeat: no-repeat;
+  -webkit-mask-image: radial-gradient(
+    ellipse 68% 65% at 70% 28%,
+    black 0%,
+    rgba(0,0,0,0.7) 32%,
+    rgba(0,0,0,0.28) 60%,
+    transparent 88%);
+  mask-image: radial-gradient(
+    ellipse 68% 65% at 70% 28%,
+    black 0%,
+    rgba(0,0,0,0.7) 32%,
+    rgba(0,0,0,0.28) 60%,
+    transparent 88%);
+  mix-blend-mode: screen;
+  opacity: 0.4;
+  filter: saturate(0.88) contrast(0.95) brightness(0.95);
+}
+
+/* Protect text legibility — dark wash everywhere except the nebula zone */
+.nebula::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 75% 68% at 20% 76%, rgba(11,16,39,0.55) 0%, transparent 72%),
+    linear-gradient(180deg, rgba(11,16,39,0.4) 0%, transparent 18%);
+}
+
+/* ============================================================
+   SECTION DIVIDER
+============================================================ */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(212,168,87,0.18) 25%,
+    rgba(212,168,87,0.38) 50%,
+    rgba(212,168,87,0.18) 75%,
+    transparent 100%
+  );
+}
+
