@@ -5,7 +5,7 @@ An analysis of 3.15M+ historical wait time records across 14 attractions at 4 Wa
 Initial analysis covered 1.75M records / 8 attractions; expanded to 3.15M / 14 attractions for the deployed dashboard.
 
 ## Live Dashboard
-[View the interactive dashboard →](https://wdw-dashboard.vercel.app)
+[View the interactive dashboard →](https://wdw-wait-times.vercel.app/)
 
 ## Key Findings
 
