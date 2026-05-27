@@ -61,13 +61,11 @@ Winter is the busiest season (65 min avg) driven by holiday crowds, while Fall i
 
 ## Project Structure
 ```
-wdw-wait-time-analysis/
-├── charts/              # Generated visualization PNGs
+wdw-wait-times/
+├── analysis.py          # Full analysis pipeline (Python/Pandas)
+├── 01–08_*.png          # Generated charts
 ├── data/                # Raw CSV data (not in repo — see below)
-├── src/
-│   └── analysis.py      # Full analysis pipeline
-├── dashboard/           # React dashboard (deployed to Vercel)
-├── .gitignore
+├── frontend/            # Next.js dashboard (deployed to Vercel)
 └── README.md
 ```
 
@@ -83,8 +81,17 @@ pip install pandas numpy matplotlib seaborn
 
 ### 3. Run
 ```bash
-cd src
 python analysis.py
+```
+
+## Frontend
+
+The interactive dashboard lives in `frontend/` (Next.js, Tailwind, Framer Motion).
+
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
 ## Author
