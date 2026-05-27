@@ -1,6 +1,6 @@
 # Walt Disney World Wait Time & Demand Analysis
 
-An analysis of **3.15M+ historical wait time records across 14 attractions at 4 Walt Disney World parks (2015–2021), identifying patterns in crowd behavior, peak demand periods, and ride popularity trends.
+An analysis of 3.15M+ historical wait time records across 14 attractions at 4 Walt Disney World parks (2015–2021), identifying patterns in crowd behavior, peak demand periods, and ride popularity trends.
 
 Initial analysis covered 1.75M records / 8 attractions; expanded to 3.15M / 14 attractions for the deployed dashboard.
 
