@@ -27,7 +27,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Disney Wait Times — A Machine Learning Study | Johnny Nguyen",
+  title: "Disney Wait Times",
   description:
     "A machine learning analysis of 3,146,086 Walt Disney World wait-time records (2015–2021). Gradient Boosting model (R²=0.573) with seasonal trends, holiday impact, and live wait-time predictions across 14 attractions and 4 parks.",
   openGraph: {
