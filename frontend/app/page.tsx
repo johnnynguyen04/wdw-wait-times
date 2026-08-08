@@ -161,19 +161,41 @@ const NAV_ITEMS = [
 // UTILITIES
 // ================================================================
 
-function getHeatColor(value: number): string {
-  const ratio = Math.max(0, Math.min(1, (value - 10) / 82))
-  if (ratio < 0.4) {
-    const t = ratio / 0.4
-    return `rgba(${Math.round(42 + 138 * t)}, ${Math.round(150 - 10 * t)}, ${Math.round(68 - 20 * t)}, 0.88)`
-  } else if (ratio < 0.7) {
-    const t = (ratio - 0.4) / 0.3
-    return `rgba(${Math.round(180 + 20 * t)}, ${Math.round(140 - 60 * t)}, ${Math.round(48 - 20 * t)}, 0.88)`
-  } else {
-    const t = (ratio - 0.7) / 0.3
-    return `rgba(${Math.round(200 - 40 * t)}, ${Math.round(80 - 50 * t)}, ${Math.round(28 - 10 * t)}, 0.88)`
-  }
+// Sequential "lantern" ramp — deep navy (quiet) rises through bronze into
+// luminous gold (packed). Single warm trajectory, monotonic lightness, so the
+// busiest cells literally glow while quiet hours recede into the night sky.
+const HEAT_STOPS: [number, [number, number, number]][] = [
+  [0.0,  [24, 32, 72]],    // #182048 — barely above the page navy
+  [0.38, [110, 88, 54]],   // #6E5836 — dark bronze
+  [0.72, [212, 168, 87]],  // #D4A857 — brand gold
+  [1.0,  [255, 227, 161]], // #FFE3A1 — starlight
+]
+
+function heatRatio(value: number): number {
+  return Math.max(0, Math.min(1, (value - 10) / 82))
 }
+
+function getHeatColor(value: number): string {
+  const t = heatRatio(value)
+  for (let i = 1; i < HEAT_STOPS.length; i++) {
+    const [t1, c1] = HEAT_STOPS[i]
+    if (t <= t1) {
+      const [t0, c0] = HEAT_STOPS[i - 1]
+      const k = (t - t0) / (t1 - t0)
+      const mix = c0.map((c, j) => Math.round(c + (c1[j] - c) * k))
+      return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`
+    }
+  }
+  return "rgb(255, 227, 161)"
+}
+
+// Bright gold cells need dark ink; navy cells need moonlight.
+function getHeatTextColor(value: number): string {
+  return heatRatio(value) > 0.55 ? "rgba(26, 31, 61, 0.92)" : "rgba(230, 233, 248, 0.82)"
+}
+
+const HEAT_LEGEND_GRADIENT =
+  "linear-gradient(90deg, #182048, #6E5836, #D4A857, #FFE3A1)"
 
 function predictWait(
   rideName: string, month: number, dayOfWeek: number, isHoliday: boolean,
@@ -215,11 +237,12 @@ const MagicCanvas = memo(function MagicCanvas() {
 
     interface StarP  { x: number; y: number; r: number; phase: number; speed: number; maxOp: number }
     interface ShootP { x: number; y: number; vx: number; vy: number; life: number; maxLife: number }
+    interface DustP  { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; r: number }
 
     let stars:  StarP[]  = []
     let shoots: ShootP[] = []
+    let dust:   DustP[]  = []
     let t = 0
-    let shootFired = false
     let firstInit = true
 
     const init = () => {
@@ -258,19 +281,20 @@ const MagicCanvas = memo(function MagicCanvas() {
       canvas.height = H
     }
 
-    // Fire the signature shooting star ONCE, ~800ms after mount.
+    // Signature shooting star — first one ~800ms after mount, then a rare
+    // encore every 30–55s from a slightly different corner of the sky.
+    let shootTimer: number | null = null
     const fireSignatureShoot = () => {
-      if (shootFired) return
-      shootFired = true
       const ang = (22 + Math.random() * 18) * (Math.PI / 180)
       shoots.push({
-        x: W * 0.1,
-        y: H * 0.18,
+        x: W * (0.05 + Math.random() * 0.25),
+        y: H * (0.1 + Math.random() * 0.22),
         vx: Math.cos(ang) * 11,
         vy: Math.sin(ang) * 11,
         life: 0,
         maxLife: 42,
       })
+      shootTimer = window.setTimeout(fireSignatureShoot, 30000 + Math.random() * 25000)
     }
 
     const tick = () => {
@@ -318,14 +342,41 @@ const MagicCanvas = memo(function MagicCanvas() {
         const hg = ctx.createRadialGradient(ss.x, ss.y, 0, ss.x, ss.y, 5)
         hg.addColorStop(0, `rgba(255,252,220,${op})`); hg.addColorStop(1, "transparent")
         ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(ss.x, ss.y, 5, 0, Math.PI * 2); ctx.fill()
+        // Pixie dust — shed a couple of gold motes per frame that drift and fade
+        if (op > 0.2) {
+          for (let d = 0; d < 2; d++) {
+            dust.push({
+              x: ss.x + (Math.random() - 0.5) * 4,
+              y: ss.y + (Math.random() - 0.5) * 4,
+              vx: (Math.random() - 0.5) * 0.7 - ss.vx * 0.04,
+              vy: (Math.random() - 0.5) * 0.7 + 0.25,
+              life: 0,
+              maxLife: 40 + Math.random() * 45,
+              r: Math.random() * 1.1 + 0.4,
+            })
+          }
+        }
         return ss.life < ss.maxLife
+      })
+
+      // ── Pixie dust motes — slow, glittering fall ──
+      dust = dust.filter(dp => {
+        dp.x += dp.vx; dp.y += dp.vy; dp.vx *= 0.985; dp.vy *= 0.985; dp.life++
+        const fade    = 1 - dp.life / dp.maxLife
+        const glitter = 0.55 + 0.45 * Math.sin(dp.life * 0.45 + dp.x)
+        const op      = Math.max(0, fade * glitter * 0.9)
+        ctx.beginPath()
+        ctx.arc(dp.x, dp.y, dp.r, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,224,150,${op})`
+        ctx.fill()
+        return dp.life < dp.maxLife
       })
 
       raf = requestAnimationFrame(tick)
     }
 
     init(); tick()
-    const shootTimer = window.setTimeout(fireSignatureShoot, 800)
+    shootTimer = window.setTimeout(fireSignatureShoot, 800)
 
     // iOS Safari fires a resize event every time its address bar toggles
     // during scroll. We only want to re-init for meaningful changes
@@ -342,7 +393,7 @@ const MagicCanvas = memo(function MagicCanvas() {
 
     return () => {
       cancelAnimationFrame(raf)
-      window.clearTimeout(shootTimer)
+      if (shootTimer !== null) window.clearTimeout(shootTimer)
       if (resizeTimer) clearTimeout(resizeTimer)
       window.removeEventListener("resize", onResize)
     }
@@ -441,6 +492,43 @@ const AnimatedCounter = memo(function AnimatedCounter({
 })
 
 // ================================================================
+// SPARKLE BURST  (one-shot pixie dust — fires on mount, then rests)
+// ================================================================
+
+const SparkleBurst = memo(function SparkleBurst({ seed }: { seed: number }) {
+  // Deterministic scatter from the seed so SSR/CSR agree.
+  const parts = Array.from({ length: 12 }, (_, i) => {
+    const ang  = (i / 12) * Math.PI * 2 + ((seed + i) % 5) * 0.22
+    const dist = 42 + ((seed * 7 + i * 37) % 34)
+    return {
+      x: Math.cos(ang) * dist,
+      y: Math.sin(ang) * dist * 0.65,
+      delay: (i % 5) * 0.035,
+      size: 3 + ((seed + i * 13) % 4),
+    }
+  })
+  return (
+    <span className="absolute left-[22%] top-1/2 pointer-events-none" aria-hidden="true">
+      {parts.map((p, i) => (
+        <motion.span
+          key={i}
+          initial={{ opacity: 0.9, x: 0, y: 0, scale: 0 }}
+          animate={{ opacity: 0, x: p.x, y: p.y, scale: 1 }}
+          transition={{ duration: 1.0, delay: p.delay, ease: [0.16, 1, 0.3, 1] }}
+          className="absolute rounded-full"
+          style={{
+            width: p.size,
+            height: p.size,
+            background: "#FFE09A",
+            boxShadow: "0 0 8px rgba(255,224,150,0.8)",
+          }}
+        />
+      ))}
+    </span>
+  )
+})
+
+// ================================================================
 // PARK BADGE
 // ================================================================
 
@@ -523,9 +611,14 @@ function Navigation({ activeSection }: { activeSection: string }) {
   const { scrollY } = useScroll()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Scroll 0→40px: bg opacity 0 → 0.85, border opacity 0 → 1 (Stitch spec).
-  const navBg = useTransform(scrollY, [0, 40], ["rgba(11,16,39,0)", "rgba(11,16,39,0.85)"])
-  const navBorder = useTransform(scrollY, [0, 40], ["rgba(164,182,215,0)", "rgba(164,182,215,0.12)"])
+  // Floating island: translucent glass at rest, frosts up once scrolling starts.
+  const navBg = useTransform(scrollY, [0, 60], ["rgba(11,16,39,0.35)", "rgba(13,19,44,0.78)"])
+  const navBorder = useTransform(scrollY, [0, 60], ["rgba(164,182,215,0.10)", "rgba(164,182,215,0.18)"])
+  const navShadow = useTransform(
+    scrollY,
+    [0, 60],
+    ["0 8px 32px -12px rgba(2,11,24,0)", "0 12px 40px -12px rgba(2,11,24,0.6)"],
+  )
 
   // Close drawer on resize up to desktop, and on escape.
   useEffect(() => {
@@ -549,26 +642,33 @@ function Navigation({ activeSection }: { activeSection: string }) {
 
   return (
     <>
-      <motion.header
-        style={{ backgroundColor: navBg, borderBottomColor: navBorder, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
-        className="fixed top-0 left-0 right-0 z-50 border-b"
-      >
-        <div className="max-w-[1360px] mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
-          {/* LEFT — Brand */}
+      {/* Floating glass island — detached from the top edge, frosts on scroll */}
+      <header className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 pt-4 pointer-events-none">
+        <motion.div
+          style={{
+            backgroundColor: navBg,
+            borderColor: navBorder,
+            boxShadow: navShadow,
+            backdropFilter: "blur(16px) saturate(1.15)",
+            WebkitBackdropFilter: "blur(16px) saturate(1.15)",
+          }}
+          className="pointer-events-auto flex items-center gap-2 h-14 pl-5 pr-2.5 rounded-full border"
+        >
+          {/* Brand */}
           <button
             onClick={() => scrollTo("hero")}
-            className="flex items-center gap-3 focus:outline-none focus-visible:[outline:2px_solid_rgba(212,168,87,0.6)] focus-visible:outline-offset-4 rounded-sm"
+            className="flex items-center gap-2.5 focus:outline-none focus-visible:[outline:2px_solid_rgba(212,168,87,0.6)] focus-visible:outline-offset-4 rounded-sm"
           >
             <Telescope
-              size={24}
+              size={21}
               strokeWidth={1.25}
               style={{ color: "#F4F0E6" }}
             />
             <span
-              className="font-display text-[var(--text-primary)] hidden sm:inline"
+              className="font-display text-[var(--text-primary)] hidden sm:inline whitespace-nowrap"
               style={{
                 fontWeight: 400,
-                fontSize: "1.125rem",
+                fontSize: "1.0625rem",
                 letterSpacing: "-0.01em",
                 fontVariationSettings: '"opsz" 24',
               }}
@@ -577,23 +677,22 @@ function Navigation({ activeSection }: { activeSection: string }) {
             </span>
           </button>
 
-          {/* CENTER — Desktop nav */}
-          <nav
-            className="hidden lg:flex items-center gap-1 flex-1 justify-center"
-            aria-label="Sections"
-          >
+          <span className="hidden lg:block w-px h-5 mx-2 flex-shrink-0" style={{ background: "rgba(164,182,215,0.16)" }} aria-hidden="true" />
+
+          {/* Desktop nav */}
+          <nav className="hidden lg:flex items-center" aria-label="Sections">
             {NAV_ITEMS.map((item) => {
               const active = activeSection === item.id
               return (
                 <button
                   key={item.id}
                   onClick={() => scrollTo(item.id)}
-                  className="relative px-4 py-2 rounded-full transition-colors duration-[160ms] ease-out focus:outline-none focus-visible:[outline:2px_solid_rgba(212,168,87,0.6)] focus-visible:outline-offset-4"
+                  className="relative px-3.5 py-2 rounded-full transition-colors duration-[160ms] ease-out focus:outline-none focus-visible:[outline:2px_solid_rgba(212,168,87,0.6)] focus-visible:outline-offset-4"
                   style={{
                     fontFamily: "var(--font-geist-sans), sans-serif",
                     fontWeight: 450,
-                    fontSize: "0.8125rem",
-                    letterSpacing: "0.08em",
+                    fontSize: "0.78125rem",
+                    letterSpacing: "0.07em",
                     textTransform: "uppercase",
                     color: active ? "#D4A857" : "#A8B2D1",
                   }}
@@ -621,34 +720,32 @@ function Navigation({ activeSection }: { activeSection: string }) {
             })}
           </nav>
 
-          {/* RIGHT — Live-data pill (desktop) + hamburger (mobile) */}
-          <div className="flex items-center gap-4 min-w-0 lg:min-w-[200px] justify-end">
-            <div
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full"
-              style={{ background: "#1E2547" }}
+          {/* Live-data pill — inside the island, xl+ only */}
+          <div
+            className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full ml-1"
+            style={{ background: "rgba(30,37,71,0.85)" }}
+          >
+            <div className="w-1.5 h-1.5 rounded-full bg-[#5A9E6F] breathe" />
+            <span
+              className="font-mono tabular-nums whitespace-nowrap"
+              style={{ fontWeight: 500, fontSize: "0.72rem", color: "#A8B2D1" }}
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-[#5A9E6F] breathe" />
-              <span
-                className="font-mono tabular-nums"
-                style={{ fontWeight: 500, fontSize: "0.75rem", color: "#A8B2D1" }}
-              >
-                3,146,086 records
-              </span>
-            </div>
-
-            {/* Hamburger — shows < 1024px */}
-            <button
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open navigation"
-              className="lg:hidden flex flex-col items-end justify-center gap-[4px] w-8 h-8 focus:outline-none focus-visible:[outline:2px_solid_rgba(212,168,87,0.6)] focus-visible:outline-offset-4 rounded-sm"
-            >
-              <span className="block h-[1.5px] bg-[#F4F0E6]" style={{ width: "20px" }} />
-              <span className="block h-[1.5px] bg-[#F4F0E6]" style={{ width: "16px" }} />
-              <span className="block h-[1.5px] bg-[#F4F0E6]" style={{ width: "18px" }} />
-            </button>
+              3,146,086 records
+            </span>
           </div>
-        </div>
-      </motion.header>
+
+          {/* Hamburger — shows < 1024px */}
+          <button
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation"
+            className="lg:hidden flex flex-col items-end justify-center gap-[4px] w-9 h-9 ml-1 focus:outline-none focus-visible:[outline:2px_solid_rgba(212,168,87,0.6)] focus-visible:outline-offset-4 rounded-full"
+          >
+            <span className="block h-[1.5px] bg-[#F4F0E6]" style={{ width: "18px" }} />
+            <span className="block h-[1.5px] bg-[#F4F0E6]" style={{ width: "14px" }} />
+            <span className="block h-[1.5px] bg-[#F4F0E6]" style={{ width: "16px" }} />
+          </button>
+        </motion.div>
+      </header>
 
       {/* Mobile drawer — slide from right */}
       <AnimatePresence>
@@ -815,17 +912,10 @@ function HeroSection() {
             animate="visible"
             className="relative z-10"
           >
-            <motion.div variants={itemV} className="mb-7">
-              <span
-                className="inline-flex items-center gap-2 text-[10px] font-semibold tracking-[0.2em] uppercase px-3.5 py-1.5 rounded-full"
-                style={{
-                  background: "rgba(212,168,87,0.08)",
-                  border: "1px solid rgba(212,168,87,0.22)",
-                  color: "#D4A857",
-                }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#5A9E6F] breathe" />
-                Live Data · 3,146,086 records
+            <motion.div variants={itemV} className="mb-7 flex items-center gap-3">
+              <span className="h-px w-6 flex-shrink-0" style={{ background: "rgba(212,168,87,0.4)" }} aria-hidden="true" />
+              <span className="text-[11px] font-mono tabular-nums tracking-[0.18em] uppercase text-[var(--text-muted)]">
+                A machine-learning study · 3,146,086 records
               </span>
             </motion.div>
 
@@ -860,9 +950,9 @@ function HeroSection() {
               <motion.button
                 onClick={() => scrollTo("models")}
                 whileHover={{ y: -1 }}
-                whileTap={{ y: 0 }}
+                whileTap={{ scale: 0.98, y: 0 }}
                 transition={{ type: "spring", stiffness: 420, damping: 26 }}
-                className="flex items-center gap-2.5 px-7 py-3.5 rounded-full font-semibold text-sm"
+                className="group flex items-center gap-3 pl-7 pr-2 py-2 rounded-full font-semibold text-sm"
                 style={{
                   background: "linear-gradient(135deg,#D4A857 0%,#E5B967 100%)",
                   color: "#0B1027",
@@ -870,7 +960,13 @@ function HeroSection() {
                 }}
               >
                 See the model
-                <ArrowRight size={14} strokeWidth={1.5} />
+                <span
+                  className="w-9 h-9 rounded-full flex items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:scale-105"
+                  style={{ background: "rgba(11,16,39,0.16)" }}
+                  aria-hidden="true"
+                >
+                  <ArrowRight size={14} strokeWidth={1.75} />
+                </span>
               </motion.button>
               <button
                 onClick={() => scrollTo("predict")}
@@ -1040,29 +1136,59 @@ function HeroSection() {
                 </div>
               </div>
 
-              {/* Sparkline */}
-              <div className="mt-6 h-10 w-full">
-                <svg viewBox="0 0 200 40" className="w-full h-full" preserveAspectRatio="none" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="rgba(212,168,87,0.45)" />
-                      <stop offset="100%" stopColor="rgba(212,168,87,0)" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M0 28 L12 24 L24 26 L36 18 L48 22 L60 14 L72 17 L84 12 L96 18 L108 10 L120 16 L132 8 L144 14 L156 11 L168 18 L180 14 L192 20 L200 18"
-                    fill="none"
-                    stroke="#D4A857"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M0 28 L12 24 L24 26 L36 18 L48 22 L60 14 L72 17 L84 12 L96 18 L108 10 L120 16 L132 8 L144 14 L156 11 L168 18 L180 14 L192 20 L200 18 L200 40 L0 40 Z"
-                    fill="url(#sparkGrad)"
-                  />
-                </svg>
-              </div>
+              {/* Sparkline — the displayed ride's actual hourly curve (8AM–9PM) */}
+              {(() => {
+                const hourly = livePrediction
+                  ? PARK_HOURLY[livePrediction.park]?.[livePrediction.ride]
+                  : undefined
+                if (!hourly) return <div className="mt-6 h-10 w-full" />
+                const lo = Math.min(...hourly)
+                const hi = Math.max(...hourly)
+                const pts = hourly.map((v, i) => {
+                  const x = (i / (hourly.length - 1)) * 200
+                  const y = 34 - ((v - lo) / Math.max(1, hi - lo)) * 28
+                  return `${x.toFixed(1)} ${y.toFixed(1)}`
+                })
+                const line = `M${pts.join(" L")}`
+                const area = `${line} L200 40 L0 40 Z`
+                return (
+                  <div className="mt-6">
+                    <svg viewBox="0 0 200 40" className="w-full h-10" preserveAspectRatio="none" aria-hidden="true">
+                      <defs>
+                        <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="rgba(212,168,87,0.45)" />
+                          <stop offset="100%" stopColor="rgba(212,168,87,0)" />
+                        </linearGradient>
+                      </defs>
+                      <motion.path
+                        key={`area-${livePrediction?.ride}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.8, delay: 0.3 }}
+                        d={area}
+                        fill="url(#sparkGrad)"
+                      />
+                      <motion.path
+                        key={`line-${livePrediction?.ride}`}
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 1.1, ease: [0.32, 0.72, 0, 1] }}
+                        d={line}
+                        fill="none"
+                        stroke="#D4A857"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="flex justify-between mt-1.5 text-[9px] font-mono text-[var(--text-muted)] tracking-wide">
+                      <span>8 AM</span>
+                      <span>Today&apos;s hourly curve</span>
+                      <span>9 PM</span>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </motion.div>
         </div>
@@ -1491,10 +1617,11 @@ function PredictSection() {
             </div>
             <button onClick={handlePredict}
               disabled={loading}
-              className="w-full py-3.5 rounded-full font-semibold text-sm transition-transform duration-150 active:translate-y-[1px]"
+              className="group relative w-full h-[52px] rounded-full font-semibold text-sm transition-transform duration-150 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.99] flex items-center justify-center"
               style={{
-                background: loading ? "rgba(212,168,87,0.18)" : "#D4A857",
+                background: loading ? "rgba(212,168,87,0.18)" : "linear-gradient(135deg,#D4A857 0%,#E5B967 100%)",
                 color: loading ? "#D4A857" : "#0B1027",
+                boxShadow: loading ? "none" : "0 10px 32px -12px rgba(212,168,87,0.4)",
               }}>
               {loading ? (
                 <span className="inline-flex items-center gap-2">
@@ -1503,7 +1630,16 @@ function PredictSection() {
                   Calculating
                 </span>
               ) : (
-                ran ? "Recalculate" : "Calculate wait time"
+                <>
+                  {ran ? "Recalculate" : "Calculate wait time"}
+                  <span
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:scale-105"
+                    style={{ background: "rgba(11,16,39,0.16)" }}
+                    aria-hidden="true"
+                  >
+                    <Zap size={15} strokeWidth={1.75} />
+                  </span>
+                </>
               )}
             </button>
           </div>
@@ -1516,7 +1652,7 @@ function PredictSection() {
                   className="text-[var(--text-muted)]">
                   <div className="text-[10px] font-semibold tracking-[0.22em] uppercase mb-3">Awaiting input</div>
                   <p className="text-sm max-w-[32ch] leading-relaxed">
-                    Configure trip details <span className="md:hidden">above</span><span className="hidden md:inline">on the left</span> to see what the model predicts.
+                    Pick a ride and a day <span className="md:hidden">above</span><span className="hidden md:inline">on the left</span>, and the model will do the rest.
                   </p>
                 </motion.div>
               )}
@@ -1541,9 +1677,10 @@ function PredictSection() {
                     <div>
                       <div className="text-[10px] font-semibold tracking-[0.22em] uppercase text-[var(--text-muted)] mb-2">Predicted wait</div>
                       <div
-                        className="font-mono tabular-nums text-[var(--text-primary)] leading-none"
+                        className="relative font-mono tabular-nums text-[var(--text-primary)] leading-none"
                         style={{ fontSize: "clamp(4.5rem, 9vw, 6.5rem)", fontWeight: 500, letterSpacing: "-0.04em" }}
                       >
+                        <SparkleBurst key={result.prediction} seed={result.prediction} />
                         {result.prediction}
                         <span className="font-display text-[0.28em] font-light text-[var(--text-secondary)] ml-3 align-middle" style={{ fontWeight: 300 }}>
                           min
@@ -1628,23 +1765,25 @@ function TimingSection() {
                   <motion.div key={s.name} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }} transition={{ delay: i * 0.08 }}
                     className="flex-1 flex flex-col items-center gap-2">
-                    <span className="text-[11px] font-mono text-[var(--text-secondary)]">{s.avg}</span>
+                    <span className="text-[11px] font-mono tabular-nums text-[var(--text-secondary)]">{s.avg}</span>
                     <motion.div
                       initial={{ height: 0 }}
                       whileInView={{ height: barH }}
                       viewport={{ once: true }}
                       transition={{ delay: i * 0.08 + 0.15, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-                      className="w-full rounded-t-sm flex-shrink-0"
+                      className="w-[68%] rounded-t-[2px] flex-shrink-0"
                       style={{
                         background: s.best
-                          ? "linear-gradient(180deg,#5A9E6F,rgba(90,158,111,0.55))"
-                          : "linear-gradient(180deg,#D4A857,rgba(212,168,87,0.5))",
+                          ? "linear-gradient(180deg, rgba(229,185,103,0.75) 0%, rgba(229,185,103,0.22) 60%, rgba(229,185,103,0.03) 100%)"
+                          : "linear-gradient(180deg, rgba(212,168,87,0.42) 0%, rgba(212,168,87,0.12) 60%, rgba(212,168,87,0.02) 100%)",
+                        borderTop: s.best ? "2px solid #E5B967" : "2px solid rgba(212,168,87,0.65)",
+                        boxShadow: s.best ? "0 0 24px -8px rgba(229,185,103,0.5)" : "none",
                       }}
                     />
                     <div className="text-center">
                       <div className="text-xs font-medium text-[var(--text-primary)]">{s.name}</div>
                       <div className="text-[10px] text-[var(--text-muted)]">{s.months}</div>
-                      {s.best && <div className="text-[9px] text-[#5A9E6F] font-semibold tracking-widest uppercase mt-0.5">Best</div>}
+                      {s.best && <div className="text-[9px] text-[#E5B967] font-semibold tracking-widest uppercase mt-0.5">Best</div>}
                     </div>
                   </motion.div>
                 )
@@ -1690,23 +1829,27 @@ function TimingSection() {
                   <motion.div key={d.day} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }} transition={{ delay: i * 0.07 }}
                     className="flex-1 flex flex-col items-center gap-2">
-                    <span className="text-[10px] font-mono text-[var(--text-secondary)]">{d.avg}</span>
+                    <span className="text-[10px] font-mono tabular-nums text-[var(--text-secondary)]">{d.avg}</span>
                     <motion.div
                       initial={{ height: 0 }}
                       whileInView={{ height: barH }}
                       viewport={{ once: true }}
                       transition={{ delay: i * 0.07 + 0.15, duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-                      className="w-full rounded-t-md"
+                      className="w-[72%] rounded-t-[2px]"
                       style={{
-                        background: best ? "linear-gradient(180deg,#5A9E6F,rgba(90,158,111,0.55))"
-                          : worst ? "linear-gradient(180deg,#C84A2A,rgba(200,74,42,0.55))"
-                          : "linear-gradient(180deg,#D4A857,rgba(212,168,87,0.45))",
+                        background: best
+                          ? "linear-gradient(180deg, rgba(229,185,103,0.75) 0%, rgba(229,185,103,0.22) 60%, rgba(229,185,103,0.03) 100%)"
+                          : worst
+                          ? "linear-gradient(180deg, rgba(192,96,60,0.65) 0%, rgba(192,96,60,0.2) 60%, rgba(192,96,60,0.03) 100%)"
+                          : "linear-gradient(180deg, rgba(212,168,87,0.4) 0%, rgba(212,168,87,0.12) 60%, rgba(212,168,87,0.02) 100%)",
+                        borderTop: best ? "2px solid #E5B967" : worst ? "2px solid #C0603C" : "2px solid rgba(212,168,87,0.6)",
+                        boxShadow: best ? "0 0 20px -8px rgba(229,185,103,0.5)" : "none",
                       }}
                     />
                     <span className="text-xs font-medium"
-                      style={{ color: best ? "#5A9E6F" : worst ? "#C84A2A" : "var(--text-secondary)" }}>{d.day}</span>
-                    {best  && <span className="text-[9px] text-[#5A9E6F] font-semibold tracking-widest uppercase">Best</span>}
-                    {worst && <span className="text-[9px] text-[#C84A2A] font-semibold tracking-widest uppercase">Peak</span>}
+                      style={{ color: best ? "#E5B967" : worst ? "#C0603C" : "var(--text-secondary)" }}>{d.day}</span>
+                    {best  && <span className="text-[9px] text-[#E5B967] font-semibold tracking-widest uppercase">Best</span>}
+                    {worst && <span className="text-[9px] text-[#C0603C] font-semibold tracking-widest uppercase">Peak</span>}
                   </motion.div>
                 )
               })}
@@ -1726,7 +1869,7 @@ function TimingSection() {
                 num: "02",
                 kicker: "Worst windows",
                 title: "Skip holiday weeks",
-                body: "Spring Break (+17%) and Christmas / New Year's (+13%) are the sharpest crowd spikes. Summer Peak and Thanksgiving move the needle far less.",
+                body: "Spring Break (+17%) and Christmas / New Year's (+13%) are the sharpest crowd spikes. Summer and Thanksgiving barely register by comparison.",
               },
             ].map((card, i) => (
               <motion.div
@@ -1760,29 +1903,27 @@ function TimingSection() {
         {/* Month crowd heatmap */}
         <TiltCard className="glass-card glass-card-hover p-8" intensity={2}>
           <div className="text-[11px] font-semibold tracking-[0.2em] uppercase text-[#D4A857] mb-1">Month-by-Month Crowd Level</div>
-          <p className="text-[var(--text-muted)] text-xs mb-6">Relative wait-time multiplier. Green means low crowds, red means high.</p>
+          <p className="text-[var(--text-muted)] text-xs mb-6">Relative wait-time multiplier. The brighter a month glows, the longer the lines.</p>
           <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
             {MONTH_FACTORS.map((factor, i) => {
               const intensity = Math.max(0, Math.min(1, (factor - 0.78) / 0.57))
+              const heatVal = 10 + intensity * 82
               return (
                 <motion.div key={i} initial={{ opacity: 0, scale: 0.8 }} whileInView={{ opacity: 1, scale: 1 }}
                   viewport={{ once: true }} transition={{ delay: i * 0.04 }}
                   className="heat-cell aspect-square flex flex-col items-center justify-center gap-0.5"
-                  style={{ background: getHeatColor(10 + intensity * 82) }}
+                  style={{ background: getHeatColor(heatVal) }}
                   title={`${MONTHS[i]}: ${factor}× multiplier`}>
-                  <span className="text-[9px] font-semibold text-white/90">{MONTHS[i].slice(0,3)}</span>
-                  <span className="text-[8px] font-mono text-white/70">{factor}×</span>
+                  <span className="text-[9px] font-semibold" style={{ color: getHeatTextColor(heatVal) }}>{MONTHS[i].slice(0,3)}</span>
+                  <span className="text-[8px] font-mono tabular-nums" style={{ color: getHeatTextColor(heatVal), opacity: 0.75 }}>{factor}×</span>
                 </motion.div>
               )
             })}
           </div>
-          <div className="flex items-center gap-4 mt-5 text-[10px] text-[var(--text-muted)]">
-            {[["rgba(42,150,68,0.88)","Low crowds"],["rgba(212,168,87,0.88)","Moderate"],["rgba(180,50,28,0.88)","High crowds"]].map(([bg,label]) => (
-              <div key={label} className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-sm" style={{ background: bg }} />
-                {label}
-              </div>
-            ))}
+          <div className="flex items-center gap-3 mt-5 text-[10px] text-[var(--text-muted)]">
+            <span>Quiet</span>
+            <div className="w-[140px] h-2 rounded-full" style={{ background: HEAT_LEGEND_GRADIENT }} />
+            <span>Packed</span>
           </div>
         </TiltCard>
       </div>
@@ -1827,7 +1968,7 @@ function ModelsSection() {
                     </div>
                     {isWinner && (
                       <span className="text-[9px] font-semibold tracking-[0.18em] uppercase px-2 py-1 rounded-md"
-                        style={{ background: "rgba(90,158,111,0.12)", color: "#5A9E6F", border: "1px solid rgba(90,158,111,0.25)" }}>
+                        style={{ background: "rgba(212,168,87,0.1)", color: "#E5B967", border: "1px solid rgba(212,168,87,0.3)" }}>
                         Winner
                       </span>
                     )}
@@ -2018,7 +2159,7 @@ const PARK_STRATEGIES: Record<string, { ride: string; color: string; best: strin
   ],
   "Animal Kingdom": [
     { ride: "Flight of Passage",   color: "#D4A857", best: "8 AM",     tip: "The longest waits in all of WDW — 99–136 min all day. Lowest at rope drop (99 min). Lightning Lane essential." },
-    { ride: "Na'vi River Journey",  color: "#5A9E6F", best: "8 AM",     tip: "27 min at rope drop, surges to 77 min by 11 AM. Morning Pandora visit is critical." },
+    { ride: "Na'vi River Journey",  color: "#5A9E6F", best: "8 AM",     tip: "27 min at rope drop, surges to 77 min by 11 AM. Ride it right after Flight of Passage while you're still in Pandora." },
     { ride: "Kilimanjaro Safaris",  color: "#4A7FC1", best: "8 AM",     tip: "14 min at rope drop, peaks at 58 min by 11 AM. Animals are also most active in morning." },
     { ride: "Expedition Everest",   color: "#8B6BB5", best: "8 AM",     tip: "9 min at rope drop, peaks at 44 min by noon. Drops to 16 min by 9 PM — great bookend option." },
     { ride: "DINOSAUR",             color: "#C84A2A", best: "8 AM",     tip: "8 min at rope drop, peaks at 38 min midday. Low waits all day — ride whenever convenient." },
@@ -2120,7 +2261,7 @@ function ParksSection() {
                           style={{ background: getHeatColor(val) }}
                           onMouseEnter={() => setHovered({ ride, hour: HOURS_LABELS[hi], val })}
                           onMouseLeave={() => setHovered(null)}>
-                          <span className="text-[9px] font-mono font-semibold text-white/85">{val}</span>
+                          <span className="text-[9px] font-mono font-semibold tabular-nums" style={{ color: getHeatTextColor(val) }}>{val}</span>
                         </motion.div>
                       ))}
                     </motion.div>
@@ -2130,10 +2271,11 @@ function ParksSection() {
 
               {/* Legend — stays static within the card, never scrolls */}
               <div className="flex items-center gap-3 mt-5 text-[10px] text-[var(--text-muted)]">
-                <span>Wait:</span>
+                <span>Quiet</span>
                 <div className="flex-1 max-w-[180px] h-2 rounded-full"
-                  style={{ background: "linear-gradient(90deg,rgba(42,150,68,0.88),rgba(200,146,42,0.88),rgba(180,50,28,0.88))" }} />
-                <span>{minVal} min → {maxVal} min</span>
+                  style={{ background: HEAT_LEGEND_GRADIENT }} />
+                <span>Packed</span>
+                <span className="font-mono tabular-nums ml-2">{minVal}–{maxVal} min</span>
               </div>
               <AnimatePresence>
                 {hovered && (
@@ -2147,26 +2289,36 @@ function ParksSection() {
               </AnimatePresence>
             </TiltCard>
 
-            {/* Strategy cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Touring plan — editorial ledger, one hairline row per ride */}
+            <div className="glass-card-airy px-6 md:px-10 py-3">
+              <div className="text-[10px] font-semibold tracking-[0.22em] uppercase text-[var(--text-muted)] pt-5 pb-1">
+                Touring plan · {activePark}
+              </div>
               {strategies.map((s, i) => (
-                <motion.div key={s.ride} initial={{ opacity: 0, y: 20, filter: "blur(3px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ delay: i * 0.09, duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
-                  className="glass-card glass-card-hover p-6 flex gap-5 items-start">
-                  <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center mt-0.5"
-                    style={{ background: `${s.color}14`, border: `1px solid ${s.color}30` }}>
-                    <Clock size={16} style={{ color: s.color }} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-[var(--text-primary)]">{s.ride}</span>
-                      <span className="text-[10px] font-semibold font-mono tabular-nums px-2 py-0.5 rounded-md"
-                        style={{ background: "rgba(90,158,111,0.12)", color: "#5A9E6F", border: "1px solid rgba(90,158,111,0.25)" }}>
-                        {s.best}
-                      </span>
+                <motion.div key={s.ride} initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.08, duration: 0.55, ease: [0.32, 0.72, 0, 1] }}
+                  className="grid grid-cols-[auto_1fr_auto] gap-x-5 md:gap-x-8 items-baseline py-6 border-b border-[rgba(164,182,215,0.1)] last:border-b-0">
+                  <span className="font-mono tabular-nums text-[11px] text-[#D4A857]">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0">
+                    <div
+                      className="font-display text-[var(--text-primary)] text-lg md:text-xl mb-1.5"
+                      style={{ fontWeight: 450, letterSpacing: "-0.01em" }}
+                    >
+                      {s.ride}
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{s.tip}</p>
+                    <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed max-w-[64ch]">{s.tip}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div
+                      className="font-display tabular-nums leading-none"
+                      style={{ color: "#E5B967", fontSize: "clamp(1.4rem, 2.4vw, 1.9rem)", fontWeight: 400, letterSpacing: "-0.01em" }}
+                    >
+                      {s.best}
+                    </div>
+                    <div className="text-[9px] tracking-[0.2em] uppercase text-[var(--text-muted)] mt-1.5">Go at</div>
                   </div>
                 </motion.div>
               ))}
@@ -2210,6 +2362,23 @@ function Footer() {
             <p className="text-[var(--text-muted)] text-sm mt-4">
               By <span className="text-[var(--text-secondary)]">Johnny Nguyen</span>. Independent analysis.
             </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 mt-5 text-[13px]">
+              {[
+                ["GitHub", "https://github.com/johnnynguyen04/wdw-wait-times"],
+                ["LinkedIn", "https://linkedin.com/in/johnnynguyen04"],
+                ["Data · TouringPlans", "https://touringplans.com/"],
+              ].map(([label, href]) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline underline-offset-4 decoration-[rgba(212,168,87,0.35)] hover:decoration-[#D4A857] transition-colors duration-[160ms]"
+                >
+                  {label}
+                </a>
+              ))}
+            </div>
           </div>
 
           {/* Dataset colophon */}
