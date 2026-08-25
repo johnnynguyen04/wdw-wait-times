@@ -93,7 +93,3 @@ cd frontend
 npm install
 npm run dev
 ```
-
-## Author
-**Johnny Nguyen** — Data Science @ UCF  
-[LinkedIn](https://linkedin.com/in/johnnynguyen04)
